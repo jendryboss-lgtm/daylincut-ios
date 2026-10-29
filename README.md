@@ -135,5 +135,5 @@ AutoCut, captions (Speech), segmentation (Vision) and the AI clipper already run
 - **TikTok sharing.** The TikTok OpenSDK is a third-party package, so sharing uses the system share sheet. "Promote" opens the TikTok app, or the TikTok website if the app is missing.
 - **Frame rates.** Above the source frame rate, frames are duplicated, not interpolated.
 - **Smart HDR** needs a device that can encode 10-bit HEVC. Otherwise the export falls back to SDR automatically.
-- **Captions** use `SFSpeechRecognizer`. Recognition is on-device when the locale supports it; otherwise it goes through Apple's server and is subject to Apple's limits of about one minute per request. Long clips are transcribed in chunks.
+- **Captions** use `SFSpeechRecognizer`. Recognition is on-device when the locale supports it; otherwise it goes through Apple's server and is subject to Apple's limits of about one minute per request. Long clips are sent as a single request, not split into chunks, so server-based recognition may stop early on them.
 - **Generative features** are local procedural mocks until you plug in a cloud `AIService`.
