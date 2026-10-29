@@ -79,14 +79,50 @@ enum FrameVideoWriter {
         writer.startSession(atSourceTime: .zero)
         audioReader?.startReading()
 
+        // AVAssetWriter interleaves tracks: once the video input runs ahead of the audio input
+        // it stops reporting ready until audio arrives. Audio is therefore pumped alongside the
+        // video frames instead of after them, which would deadlock.
+        var audioFinished = audioInput == nil
+        func pumpAudio() -> Bool {
+            guard !audioFinished, let audioInput, let audioOutput else { return false }
+            var appended = false
+            while audioInput.isReadyForMoreMediaData {
+                guard let sample = audioOutput.copyNextSampleBuffer() else {
+                    audioInput.markAsFinished()
+                    audioFinished = true
+                    return true
+                }
+                if !audioInput.append(sample) {
+                    audioInput.markAsFinished()
+                    audioFinished = true
+                    return true
+                }
+                appended = true
+            }
+            return appended
+        }
+        /// Waits until `input` can take more data, feeding audio meanwhile. Fails instead of
+        /// spinning forever if the writer stops making progress.
+        func waitUntilReady(_ input: AVAssetWriterInput) async throws {
+            var idle = 0
+            while !input.isReadyForMoreMediaData {
+                try Task.checkCancellation()
+                if writer.status == .failed {
+                    throw VideoEngineError.writerFailed(writer.error?.localizedDescription ?? "writer failed")
+                }
+                if pumpAudio() { idle = 0; continue }
+                idle += 1
+                if idle > 5_000 { throw VideoEngineError.writerFailed("Writer stalled") } // ~10 s
+                try await Task.sleep(nanoseconds: 2_000_000)
+            }
+        }
+
         let frameCount = max(1, Int((duration * Double(fps)).rounded()))
         let canvas = CGRect(origin: .zero, size: size)
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
         for i in 0..<frameCount {
             try Task.checkCancellation()
-            while !input.isReadyForMoreMediaData {
-                try await Task.sleep(nanoseconds: 2_000_000)
-            }
+            try await waitUntilReady(input)
             let t = Double(i) / Double(fps)
             guard let pool = adaptor.pixelBufferPool else { throw VideoEngineError.writerFailed("No pixel buffer pool") }
             var buffer: CVPixelBuffer?
@@ -100,17 +136,15 @@ enum FrameVideoWriter {
                 throw VideoEngineError.writerFailed(writer.error?.localizedDescription ?? "append")
             }
             progress?(Double(i + 1) / Double(frameCount) * (audioInput == nil ? 1 : 0.9))
+            _ = pumpAudio()
         }
         input.markAsFinished()
 
-        if let audioInput, let audioOutput {
-            while let sample = audioOutput.copyNextSampleBuffer() {
-                while !audioInput.isReadyForMoreMediaData {
-                    try await Task.sleep(nanoseconds: 2_000_000)
-                }
-                audioInput.append(sample)
+        if let audioInput {
+            while !audioFinished {
+                try await waitUntilReady(audioInput)
+                _ = pumpAudio()
             }
-            audioInput.markAsFinished()
         }
 
         writer.endSession(atSourceTime: CMTime(seconds: duration, preferredTimescale: 600))

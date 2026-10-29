@@ -82,6 +82,7 @@ jobs:
             2>&1 | tee artifacts/build.log
 
       - name: Test
+        timeout-minutes: 25
         run: |
           set -o pipefail
           xcodebuild test-without-building \
@@ -89,6 +90,9 @@ jobs:
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -derivedDataPath "$DERIVED_DATA" \
             -resultBundlePath "$RESULT_BUNDLE" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 300 \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             2>&1 | tee artifacts/test.log
 
@@ -119,7 +123,7 @@ jobs:
           retention-days: 14
 
       - name: Upload xcresult and logs on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: daylincut-ci-failure-${{ github.run_id }}
