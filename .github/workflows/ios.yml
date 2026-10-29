@@ -70,6 +70,7 @@ jobs:
           xcrun simctl boot "$UDID" || true
 
       - name: Build
+        id: build
         run: |
           set -o pipefail
           mkdir -p artifacts
@@ -90,6 +91,32 @@ jobs:
             -resultBundlePath "$RESULT_BUNDLE" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             2>&1 | tee artifacts/test.log
+
+      - name: Install app and capture Home screenshot
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -x
+          UDID="${{ steps.sim.outputs.udid }}"
+          APP=$(find "$DERIVED_DATA/Build/Products" -maxdepth 2 -name 'DaylinCut.app' -path '*iphonesimulator*' | head -n1)
+          echo "App: $APP"
+          mkdir -p artifacts/screens
+          xcrun simctl bootstatus "$UDID" -b || true
+          xcrun simctl install "$UDID" "$APP"
+          BID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          xcrun simctl launch "$UDID" "$BID"
+          sleep 12
+          xcrun simctl io "$UDID" screenshot artifacts/screens/daylincut-home.png
+          ls -la artifacts/screens
+
+      - name: Upload Home screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daylincut-home-screenshot
+          path: artifacts/screens/
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload xcresult and logs on failure
         if: failure()
