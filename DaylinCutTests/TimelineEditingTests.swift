@@ -21,7 +21,7 @@ final class TimelineEditingTests: XCTestCase {
 
     func testSplitRespectsSpeed() throws {
         var t = Timeline(clips: [Fixtures.clip(4, speed: 2)]) // 2 s on the timeline
-        try XCTUnwrap(t.split(at: 0.5))
+        _ = try XCTUnwrap(t.split(at: 0.5))
         XCTAssertEqual(t.clips[0].sourceEnd, 1.0, accuracy: 1e-9)
         XCTAssertEqual(t.duration, 2, accuracy: 1e-9)
     }

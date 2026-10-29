@@ -144,11 +144,11 @@ final class ExportService: @unchecked Sendable {
             }
         }
 
-        lock.lock()
-        self.reader = reader
-        self.writer = writer
-        let cancelledEarly = isCancelled
-        lock.unlock()
+        let cancelledEarly = lock.withLock { () -> Bool in
+            self.reader = reader
+            self.writer = writer
+            return isCancelled
+        }
         if cancelledEarly { throw VideoEngineError.cancelled }
 
         guard reader.startReading() else { throw VideoEngineError.writerFailed(reader.error?.localizedDescription ?? "startReading") }
@@ -203,9 +203,7 @@ final class ExportService: @unchecked Sendable {
             group.notify(queue: .global()) { c.resume() }
         }
 
-        lock.lock()
-        let cancelled = isCancelled
-        lock.unlock()
+        let cancelled = lock.withLock { isCancelled }
         if cancelled || reader.status == .cancelled {
             writer.cancelWriting()
             try? FileManager.default.removeItem(at: url)

@@ -141,7 +141,8 @@ final class VideoEngineCompositionTests: XCTestCase {
         let asset = AVURLAsset(url: result.url)
         let duration = try await asset.load(.duration).seconds
         XCTAssertEqual(duration, TimelineLayout(clips: timeline.clips).totalDuration, accuracy: 0.15)
-        let video = try XCTUnwrap(try await asset.loadTracks(withMediaType: .video).first)
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        let video = try XCTUnwrap(videoTracks.first)
         let size = try await video.load(.naturalSize)
         XCTAssertEqual(size.width, 480)
         XCTAssertEqual(size.height, 854)
