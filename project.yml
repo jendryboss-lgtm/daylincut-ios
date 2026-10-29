@@ -1,0 +1,89 @@
+name: ClipForge
+options:
+  bundleIdPrefix: com.clipforge
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  ClipForge:
+    type: application
+    platform: iOS
+    sources:
+      - path: ClipForge
+        excludes:
+          - "**/*.storekit"
+      - path: ClipForge/Resources/ClipForge.storekit
+        buildPhase: none
+    info:
+      path: ClipForge/Info.plist
+      properties:
+        CFBundleDisplayName: ClipForge
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiredDeviceCapabilities:
+          - metal
+        ITSAppUsesNonExemptEncryption: false
+        LSApplicationQueriesSchemes:
+          - tiktok
+          - snssdk1233
+        NSPhotoLibraryUsageDescription: ClipForge needs access to your photos and videos so you can add them to your edits.
+        NSPhotoLibraryAddUsageDescription: ClipForge saves your exported videos and edited photos to your library.
+        NSCameraUsageDescription: ClipForge uses the camera to record new clips and photos for your projects.
+        NSMicrophoneUsageDescription: ClipForge uses the microphone to record voice-overs and video sound.
+        NSSpeechRecognitionUsageDescription: ClipForge transcribes speech in your videos to create automatic captions.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.clipforge.app
+        PRODUCT_NAME: ClipForge
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_PREVIEWS: YES
+        INFOPLIST_FILE: ClipForge/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+  ClipForgeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ClipForgeTests
+    dependencies:
+      - target: ClipForge
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.clipforge.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/ClipForge.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ClipForge
+        BUNDLE_LOADER: $(TEST_HOST)
+schemes:
+  ClipForge:
+    build:
+      targets:
+        ClipForge: all
+        ClipForgeTests: [test]
+    run:
+      config: Debug
+      storeKitConfiguration: ClipForge/Resources/ClipForge.storekit
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - name: ClipForgeTests
+    archive:
+      config: Release
