@@ -1,0 +1,103 @@
+name: iOS build & test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      PROJECT: DaylinCut.xcodeproj
+      SCHEME: DaylinCut
+      DERIVED_DATA: ${{ github.workspace }}/DerivedData
+      RESULT_BUNDLE: ${{ github.workspace }}/artifacts/DaylinCut-tests.xcresult
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Select Xcode (15.4 or newer)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen and generate project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          # project.yml is the source of truth; warn if the committed project is stale
+          git diff --stat -- DaylinCut.xcodeproj || true
+
+      - name: Pick an iOS 17+ iPhone simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          data = json.load(sys.stdin)["devices"]
+          best = None
+          for runtime, devices in data.items():
+              m = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              if not m:
+                  continue
+              ver = (int(m.group(1)), int(m.group(2)))
+              if ver < (17, 0):
+                  continue
+              for d in devices:
+                  if d.get("isAvailable") and d["name"].startswith("iPhone"):
+                      key = (ver, d["name"])
+                      if best is None or key > best[0]:
+                          best = (key, d["udid"], d["name"], runtime)
+          if best is None:
+              sys.exit("No available iOS 17+ iPhone simulator found")
+          print(best[1])
+          print(f"Using {best[2]} on {best[3]}", file=sys.stderr)
+          ')
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+
+      - name: Build
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          xcodebuild build-for-testing \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            2>&1 | tee artifacts/build.log
+
+      - name: Test
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -resultBundlePath "$RESULT_BUNDLE" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            2>&1 | tee artifacts/test.log
+
+      - name: Upload xcresult and logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daylincut-ci-failure-${{ github.run_id }}
+          path: |
+            artifacts/
+            ${{ env.DERIVED_DATA }}/Logs/
+          if-no-files-found: ignore
+          retention-days: 14

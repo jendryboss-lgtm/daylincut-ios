@@ -1,6 +1,6 @@
-name: ClipForge
+name: DaylinCut
 options:
-  bundleIdPrefix: com.clipforge
+  bundleIdPrefix: com.daylincut
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -15,19 +15,19 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 targets:
-  ClipForge:
+  DaylinCut:
     type: application
     platform: iOS
     sources:
-      - path: ClipForge
+      - path: DaylinCut
         excludes:
           - "**/*.storekit"
-      - path: ClipForge/Resources/ClipForge.storekit
+      - path: DaylinCut/Resources/DaylinCut.storekit
         buildPhase: none
     info:
-      path: ClipForge/Info.plist
+      path: DaylinCut/Info.plist
       properties:
-        CFBundleDisplayName: ClipForge
+        CFBundleDisplayName: "Daylin Cut"
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
@@ -43,47 +43,47 @@ targets:
         LSApplicationQueriesSchemes:
           - tiktok
           - snssdk1233
-        NSPhotoLibraryUsageDescription: ClipForge needs access to your photos and videos so you can add them to your edits.
-        NSPhotoLibraryAddUsageDescription: ClipForge saves your exported videos and edited photos to your library.
-        NSCameraUsageDescription: ClipForge uses the camera to record new clips and photos for your projects.
-        NSMicrophoneUsageDescription: ClipForge uses the microphone to record voice-overs and video sound.
-        NSSpeechRecognitionUsageDescription: ClipForge transcribes speech in your videos to create automatic captions.
+        NSPhotoLibraryUsageDescription: Daylin Cut needs access to your photos and videos so you can add them to your edits.
+        NSPhotoLibraryAddUsageDescription: Daylin Cut saves your exported videos and edited photos to your library.
+        NSCameraUsageDescription: Daylin Cut uses the camera to record new clips and photos for your projects.
+        NSMicrophoneUsageDescription: Daylin Cut uses the microphone to record voice-overs and video sound.
+        NSSpeechRecognitionUsageDescription: Daylin Cut transcribes speech in your videos to create automatic captions.
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.clipforge.app
-        PRODUCT_NAME: ClipForge
+        PRODUCT_BUNDLE_IDENTIFIER: com.daylincut.app
+        PRODUCT_NAME: DaylinCut
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_PREVIEWS: YES
-        INFOPLIST_FILE: ClipForge/Info.plist
+        INFOPLIST_FILE: DaylinCut/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-  ClipForgeTests:
+  DaylinCutTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - path: ClipForgeTests
+      - path: DaylinCutTests
     dependencies:
-      - target: ClipForge
+      - target: DaylinCut
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.clipforge.app.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.daylincut.app.tests
         GENERATE_INFOPLIST_FILE: YES
-        TEST_HOST: $(BUILT_PRODUCTS_DIR)/ClipForge.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ClipForge
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/DaylinCut.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DaylinCut
         BUNDLE_LOADER: $(TEST_HOST)
 schemes:
-  ClipForge:
+  DaylinCut:
     build:
       targets:
-        ClipForge: all
-        ClipForgeTests: [test]
+        DaylinCut: all
+        DaylinCutTests: [test]
     run:
       config: Debug
-      storeKitConfiguration: ClipForge/Resources/ClipForge.storekit
+      storeKitConfiguration: DaylinCut/Resources/DaylinCut.storekit
     test:
       config: Debug
       gatherCoverageData: true
       targets:
-        - name: ClipForgeTests
+        - name: DaylinCutTests
     archive:
       config: Release

@@ -1,24 +1,24 @@
-# ClipForge
+# Daylin Cut
 
-ClipForge is a CapCut-style video editor for iPhone. It uses only Apple frameworks: SwiftUI, Observation, AVFoundation, Core Image on Metal, SwiftData, Speech, Vision and StoreKit 2. There are no third-party packages.
+Daylin Cut is a CapCut-style video editor for iPhone. It uses only Apple frameworks: SwiftUI, Observation, AVFoundation, Core Image on Metal, SwiftData, Speech, Vision and StoreKit 2. There are no third-party packages.
 
 - **Requires:** iOS 17+ and Xcode 15.3+ (Xcode 16 recommended).
-- **Bundle id:** `com.clipforge.app`
+- **Bundle id:** `com.daylincut.app`
 
 ## Build and run
 
 ```bash
 brew install xcodegen          # only needed if you change project.yml
-xcodegen generate              # regenerates ClipForge.xcodeproj from project.yml
-open ClipForge.xcodeproj
+xcodegen generate              # regenerates DaylinCut.xcodeproj from project.yml
+open DaylinCut.xcodeproj
 ```
 
 ### Command line
 
 ```bash
-xcodebuild -project ClipForge.xcodeproj -scheme ClipForge \
+xcodebuild -project DaylinCut.xcodeproj -scheme DaylinCut \
   -destination 'platform=iOS Simulator,name=iPhone 15' build
-xcodebuild -project ClipForge.xcodeproj -scheme ClipForge \
+xcodebuild -project DaylinCut.xcodeproj -scheme DaylinCut \
   -destination 'platform=iOS Simulator,name=iPhone 15' test
 ```
 
@@ -28,12 +28,12 @@ To run on a device, set your team under *Signing & Capabilities*, or set `DEVELO
 
 ### StoreKit testing
 
-The `ClipForge` scheme already points at `ClipForge/Resources/ClipForge.storekit`, so purchases work in the simulator without App Store Connect. It defines two products:
+The `DaylinCut` scheme already points at `DaylinCut/Resources/DaylinCut.storekit`, so purchases work in the simulator without App Store Connect. It defines two products:
 
 | Product | Price | Offer |
 | --- | --- | --- |
-| `com.clipforge.pro.monthly` | $7.99 | $1.99 for the first month |
-| `com.clipforge.pro.yearly` | $49.99 | 1-week free trial |
+| `com.daylincut.pro.monthly` | $7.99 | $1.99 for the first month |
+| `com.daylincut.pro.yearly` | $49.99 | 1-week free trial |
 
 Use **Debug ▸ StoreKit ▸ Manage Transactions** to refund or expire a purchase.
 
@@ -72,7 +72,7 @@ For production, create the same product IDs in App Store Connect.
 The app uses MVVM with `@Observable` view models. `AppRouter` owns navigation: tabs, flows and the full-screen editor. All editing works on a value-type `Timeline`, which makes undo a list of snapshots and lets the pure logic be unit-tested.
 
 ```
-ClipForge/
+DaylinCut/
   App/            entry point, router, root tabs, camera capture
   Models/         Timeline, Clip, Effect/Transition, Caption/Text, ExportSettings, SwiftData Project
   Features/       one folder per screen (Home, MediaPicker, Compiling, Editor + Panels,
@@ -87,7 +87,7 @@ ClipForge/
     MediaLibrary/  PhotoKit import/save, app media store, media probing
     ProjectStore/  SwiftData persistence and thumbnails
     Purchases/     StoreKit 2 PurchaseManager (entitlements, paywall routing)
-ClipForgeTests/   XCTest: layout, editing, AutoCut, analysis, export settings, and
+DaylinCutTests/   XCTest: layout, editing, AutoCut, analysis, export settings, and
                   end-to-end VideoEngine composition and export tests
 ```
 
@@ -119,7 +119,7 @@ AutoCut, captions (Speech), segmentation (Vision) and the AI clipper already run
 
 ## Tests
 
-`ClipForgeTests` holds 47 tests.
+`DaylinCutTests` holds 47 tests.
 
 - **Pure logic:** `TimelineLayout` overlap and clamping, editing operations (split, delete, duplicate, move, remove-range, speed), the AutoCut arranger, the onset/tempo and scene-change detectors, caption grouping, story planning, AI clipper selection, and export settings.
 - **VideoEngine composition:** these tests generate real H.264 and AAC media at test time. They check:
@@ -137,3 +137,7 @@ AutoCut, captions (Speech), segmentation (Vision) and the AI clipper already run
 - **Smart HDR** needs a device that can encode 10-bit HEVC. Otherwise the export falls back to SDR automatically.
 - **Captions** use `SFSpeechRecognizer`. Recognition is on-device when the locale supports it; otherwise it goes through Apple's server and is subject to Apple's limits of about one minute per request. Long clips are sent as a single request, not split into chunks, so server-based recognition may stop early on them.
 - **Generative features** are local procedural mocks until you plug in a cloud `AIService`.
+
+## Continuous integration
+
+`.github/workflows/ios.yml` runs on every push to `main`, on pull requests and on demand. It uses a `macos-15` runner with the latest stable Xcode (15.4 or newer), installs XcodeGen and regenerates `DaylinCut.xcodeproj` from `project.yml`, picks the newest available iOS 17+ iPhone simulator with `xcrun simctl`, then builds and runs `DaylinCutTests` with code signing disabled. If anything fails, the `.xcresult` bundle and build/test logs are uploaded as a workflow artifact.
