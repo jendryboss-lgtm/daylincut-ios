@@ -7,9 +7,12 @@ struct ToolItem: Identifiable {
     var isOn: Bool = false
     var isPro: Bool = false
     var isNew: Bool = false
+    /// Small capsule over the icon, e.g. "Free".
+    var badge: String?
     let action: () -> Void
 
-    init(_ title: String, _ symbol: String, isOn: Bool = false, isPro: Bool = false, isNew: Bool = false, action: @escaping () -> Void) {
+    init(_ title: String, _ symbol: String, isOn: Bool = false, isPro: Bool = false, isNew: Bool = false, badge: String? = nil, action: @escaping () -> Void) {
+        self.badge = badge
         self.id = title
         self.title = title
         self.symbol = symbol
@@ -43,21 +46,30 @@ struct EditorToolbar: View {
                         Button(action: item.action) {
                             VStack(spacing: 5) {
                                 Image(systemName: item.symbol)
-                                    .font(.system(size: 20))
+                                    .font(.system(size: 20, weight: .light))
                                     .frame(height: 24)
                                     .overlay(alignment: .topTrailing) {
-                                        if item.isPro && !purchases.isPro {
+                                        if let badge = item.badge {
+                                            Text(badge)
+                                                .font(.system(size: 8, weight: .bold))
+                                                .foregroundStyle(.black)
+                                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 3))
+                                                .offset(x: 12, y: -10)
+                                        } else if item.isPro && !purchases.isPro {
                                             ProBadge().scaleEffect(0.7).offset(x: 10, y: -8)
                                         } else if item.isNew {
                                             Circle().fill(Color.red).frame(width: 6, height: 6).offset(x: 6, y: -2)
                                         }
                                     }
                                 Text(item.title)
-                                    .font(.caption2)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
+                                    .font(.system(size: 11))
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            .frame(minWidth: 62, minHeight: 64)
+                            .frame(width: 62, height: 64, alignment: .top)
+                            .padding(.top, 8)
                             .foregroundStyle(item.isOn ? Theme.accent : .primary)
                         }
                         .accessibilityLabel(item.title)
@@ -68,7 +80,7 @@ struct EditorToolbar: View {
             }
         }
         .padding(.bottom, 4)
-        .background(Theme.surface.ignoresSafeArea(edges: .bottom))
+        .background(Color.black.ignoresSafeArea(edges: .bottom))
     }
 
     private var items: [ToolItem] {
@@ -101,27 +113,27 @@ struct EditorToolbar: View {
         }
     }
 
+    /// Same order and icons as CapCut's main toolbar; AI tools follow.
     private var mainItems: [ToolItem] {
         [
             ToolItem("Edit", "scissors") {
                 if let id = vm.targetClipID { vm.selection = .clip(id) }
             },
-            ToolItem("AutoCut", "wand.and.stars", isNew: true) { vm.panel = .autoCut },
             ToolItem("Audio", "music.note") { vm.panel = .audio },
-            ToolItem("Text", "textformat") { _ = vm.addText(); vm.panel = .text },
+            ToolItem("Text", "textformat.size.larger") { _ = vm.addText(); vm.panel = .text },
             ToolItem("Effects", "sparkles") { vm.panel = .effects },
-            ToolItem("Overlay", "square.on.square") { vm.panel = .overlay },
+            ToolItem("Overlay", "photo.artframe") { vm.panel = .overlay },
             ToolItem("Captions", "captions.bubble") { vm.panel = .captions },
             ToolItem("Filters", "camera.filters") { vm.panel = .filters },
-            ToolItem("AI avatar", "person.crop.circle.badge.plus", isPro: true, isNew: true) {
-                if purchases.require(.advancedAI) { vm.panel = .avatar }
-            },
-            ToolItem("Transcript", "doc.text") { vm.panel = .transcript },
-            ToolItem("Generate media", "photo.badge.plus") { vm.panel = .generate },
-            ToolItem("Aspect ratio", "aspectratio") { vm.panel = .aspect },
-            ToolItem("AI clipper", "rectangle.stack.badge.play") { vm.panel = .clipper },
-            ToolItem("Enhance", "wand.and.rays") { vm.autoEnhanceAll(!(vm.timeline.clips.allSatisfy(\.autoEnhance))) },
-            ToolItem("Adjust", "slider.horizontal.3") { vm.panel = .adjust }
+            ToolItem("Adjust", "slider.horizontal.3") { vm.panel = .adjust },
+            ToolItem("Stickers", "face.smiling") { vm.panel = .stickers },
+            ToolItem("AI avatar", "person.crop.square.badge.camera", badge: "Free") { vm.panel = .avatar },
+            ToolItem("Transcript", "doc.text.magnifyingglass") { vm.panel = .transcript },
+            ToolItem("Generate media", "folder.badge.plus") { vm.panel = .generate },
+            ToolItem("Aspect ratio", "square") { vm.panel = .aspect },
+            ToolItem("AutoCut", "wand.and.stars", isNew: true) { vm.panel = .autoCut },
+            ToolItem("AI clipper", "scissors.badge.ellipsis") { vm.panel = .clipper },
+            ToolItem("Enhance", "wand.and.rays") { vm.autoEnhanceAll(!(vm.timeline.clips.allSatisfy(\.autoEnhance))) }
         ]
     }
 

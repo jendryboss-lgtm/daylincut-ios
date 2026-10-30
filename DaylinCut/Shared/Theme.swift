@@ -23,6 +23,14 @@ enum Theme {
     static let captionTrack = Color(red: 0.95, green: 0.35, blue: 0.55)
 
     static let cornerRadius: CGFloat = 12
+
+    // CapCut-style dark chrome
+    static let canvas = Color.black
+    static let panel = Color(white: 0.11)
+    static let chip = Color(white: 0.17)
+    static let chipHighlight = Color(white: 0.22)
+    static let hairline = Color.white.opacity(0.08)
+    static let mutedText = Color.white.opacity(0.55)
 }
 
 // MARK: - Common styles

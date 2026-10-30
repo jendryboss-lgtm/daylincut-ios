@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreImage
+import ImageIO
 import XCTest
 @testable import DaylinCut
 
@@ -150,5 +151,29 @@ final class VideoEngineCompositionTests: XCTestCase {
         XCTAssertEqual(Double(fps), 24, accuracy: 1)
         let audio = try await asset.loadTracks(withMediaType: .audio)
         XCTAssertFalse(audio.isEmpty)
+    }
+
+    func testGIFExportWritesAnimatedGIF() async throws {
+        let a = try await makeClip(seconds: 1, color: .red, withAudio: false)
+        let b = try await makeClip(seconds: 1, color: .blue, withAudio: false)
+        let timeline = Timeline(clips: [a, b])
+        var settings = ExportSettings()
+        settings.format = .gif
+        settings.gifFrameRate = 10
+        settings.gifShortSide = 240
+
+        let result = try await GIFExportService().export(timeline: timeline, settings: settings, isPro: true) { _ in }
+        defer { try? FileManager.default.removeItem(at: result.url) }
+
+        XCTAssertGreaterThan(result.bytes, 0)
+        XCTAssertEqual(result.url.pathExtension, "gif")
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(result.url as CFURL, nil))
+        XCTAssertEqual(CGImageSourceGetType(source) as String?, "com.compuserve.gif")
+        let expected = GIFExportService.frameTimes(duration: TimelineLayout(clips: timeline.clips).totalDuration, fps: 10).count
+        XCTAssertEqual(CGImageSourceGetCount(source), expected)
+        XCTAssertEqual(result.frameCount, expected)
+        let first = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        XCTAssertEqual(first.width, 240)
+        XCTAssertEqual(first.height, 426)
     }
 }

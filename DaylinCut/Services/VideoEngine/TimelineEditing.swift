@@ -119,3 +119,26 @@ extension Timeline {
         clips.insert(contentsOf: newClips, at: i + 1)
     }
 }
+
+// MARK: - Ending card
+
+extension Timeline {
+    static let endingTitle = "Thanks for watching"
+    static let endingDuration: Double = 2.5
+
+    /// Appends an end-card clip: the previous clip fades to black into it and
+    /// a title is laid over the card.
+    mutating func appendEnding(_ card: Clip, title: String = Timeline.endingTitle) {
+        var card = card
+        card.transition = Transition()
+        if !clips.isEmpty {
+            clips[clips.count - 1].transition = Transition(type: .fadeBlack, duration: 0.5)
+        }
+        clips.append(card)
+        let layout = TimelineLayout(clips: clips)
+        let cardStart = layout.placements.last?.start ?? 0
+        texts.append(TextOverlay(text: title, start: cardStart, duration: layout.placements.last?.duration ?? card.timelineDuration,
+                                 centerY: 0.5, fontScale: 0.06, style: .neon, animation: .pop))
+        clampToDuration()
+    }
+}

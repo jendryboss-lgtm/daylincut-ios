@@ -5,93 +5,122 @@ struct HomeView: View {
     @Environment(AppRouter.self) private var router
     @Environment(PurchaseManager.self) private var purchases
     @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
+    @State private var showSearch = false
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 3)
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    header
-                    hero
-                    createCards
-                    if !projects.isEmpty { recentProjects }
+                VStack(spacing: 0) {
+                    ZStack(alignment: .top) {
+                        heroBackground
+                        VStack(alignment: .leading, spacing: 0) {
+                            topRow
+                            Spacer(minLength: 0).frame(height: 96)
+                            extendBanner
+                            createCards.padding(.top, 14)
+                            recents.padding(.top, 18)
+                        }
+                        .padding(.horizontal, 18)
+                    }
                     toolsGrid
+                        .padding(.top, 22)
+                        .padding(.bottom, 24)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
             }
-            .background(Theme.background)
+            .ignoresSafeArea(edges: .top)
+            .background(Color(uiColor: .systemBackground))
             .toolbar(.hidden, for: .navigationBar)
+            .sheet(isPresented: $showSearch) { HomeSearchView() }
         }
     }
 
-    // MARK: Sections
+    // MARK: Hero
 
-    private var header: some View {
+    /// Full-bleed artwork behind the top of Home: the latest project's cover,
+    /// fading into the page like CapCut's featured banner.
+    private var heroBackground: some View {
+        GeometryReader { geo in
+            ZStack {
+                if let data = projects.first?.thumbnailData, let image = UIImage(data: data) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                } else {
+                    LinearGradient(colors: [Color(red: 0.42, green: 0.52, blue: 0.62),
+                                            Color(red: 0.72, green: 0.80, blue: 0.88),
+                                            Color(red: 0.86, green: 0.90, blue: 0.95)],
+                                   startPoint: .top, endPoint: .bottom)
+                    Image(systemName: "car.side.rear.open")
+                        .font(.system(size: 120, weight: .ultraLight))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .offset(y: -40)
+                }
+                LinearGradient(stops: [.init(color: .black.opacity(0.15), location: 0),
+                                       .init(color: .clear, location: 0.3),
+                                       .init(color: .black.opacity(0.25), location: 0.5),
+                                       .init(color: Color(uiColor: .systemBackground).opacity(0.6), location: 0.82),
+                                       .init(color: Color(uiColor: .systemBackground), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var topRow: some View {
         HStack {
-            Text("Daylin Cut")
-                .font(.title2.weight(.heavy))
-                .accessibilityAddTraits(.isHeader)
-            Spacer()
             if !purchases.isPro {
-                Button {
-                    purchases.presentPaywall()
-                } label: {
+                Button { purchases.presentPaywall() } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "diamond.fill")
+                            .foregroundStyle(Color(red: 0.72, green: 0.55, blue: 1))
                         Text("Start Pro for only \(purchases.startPriceText)")
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
                     }
-                    .font(.footnote.weight(.bold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Theme.proGradient, in: Capsule())
+                    .font(.system(size: 13, weight: .medium))
+                    .padding(.horizontal, 14).frame(height: 34)
+                    .background(.black.opacity(0.35), in: Capsule())
                     .foregroundStyle(.white)
                 }
                 .accessibilityHint("Opens Daylin Cut Pro subscription options")
             } else {
                 Label("Pro", systemImage: "diamond.fill")
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(Theme.pro)
+                    .font(.system(size: 13, weight: .bold))
+                    .padding(.horizontal, 14).frame(height: 34)
+                    .background(.black.opacity(0.35), in: Capsule())
+                    .foregroundStyle(.white)
             }
+            Spacer()
+            Button { showSearch = true } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 17, weight: .medium))
+                    .frame(width: 36, height: 36)
+                    .background(.black.opacity(0.35), in: Circle())
+                    .foregroundStyle(.white)
+            }
+            .accessibilityLabel("Search")
         }
-        .padding(.top, 8)
+        .padding(.top, 62)
     }
 
-    private var hero: some View {
-        Button {
-            router.start(.extendVideo)
-        } label: {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(Theme.heroGradient)
-                    .frame(height: 150)
-                    .overlay(alignment: .trailing) {
-                        Image(systemName: "arrow.right.to.line.compact")
-                            .font(.system(size: 64, weight: .thin))
-                            .foregroundStyle(.white.opacity(0.18))
-                            .padding(.trailing, 24)
-                    }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Extend video")
-                        .font(.title3.weight(.bold))
+    private var extendBanner: some View {
+        Button { router.start(.extendVideo) } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Extend video")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                HStack(spacing: 8) {
                     Text("Seamlessly extend any clip")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.8))
-                    HStack(spacing: 4) {
-                        Text("Try now")
-                        Image(systemName: "chevron.right")
-                    }
-                    .font(.caption.weight(.bold))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(.white.opacity(0.2), in: Capsule())
-                    .padding(.top, 6)
+                        .font(.system(size: 20, weight: .bold))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .frame(width: 18, height: 20)
+                        .background(.white.opacity(0.3), in: RoundedRectangle(cornerRadius: 4))
                 }
-                .foregroundStyle(.white)
-                .padding(16)
             }
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.35), radius: 4)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
@@ -100,48 +129,167 @@ struct HomeView: View {
 
     private var createCards: some View {
         HStack(spacing: 12) {
-            CreateCard(title: "New video", symbol: "plus", gradient: [Theme.accent, Theme.accentDark]) {
-                router.start(.newVideo)
-            }
-            CreateCard(title: "Edit photo", symbol: "photo", gradient: [Color(red: 0.98, green: 0.45, blue: 0.55), Color(red: 0.6, green: 0.3, blue: 0.9)]) {
-                router.start(.editPhoto(nil))
-            }
+            HomeCreateCard(title: "New video", symbol: "plus") { router.start(.newVideo) }
+                .frame(maxWidth: .infinity)
+                .layoutPriority(1.6)
+            HomeCreateCard(title: "Edit photo", symbol: "photo", badge: "AI photo editor") { router.start(.editPhoto(nil)) }
+                .frame(width: 136)
         }
+        .frame(height: 128)
     }
 
-    private var recentProjects: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Recent projects").font(.headline)
-                Spacer()
-                Button("See all") { router.selectedTab = .projects }
-                    .font(.subheadline)
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 12) {
-                    ForEach(projects.prefix(10)) { project in
-                        Button { router.open(project) } label: {
-                            ProjectThumbnail(project: project)
-                                .frame(width: 110)
-                        }
+    /// Recent projects as compact covers, newest first; the last tile opens Projects.
+    private var recents: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(projects.prefix(10)) { project in
+                    Button { router.open(project) } label: { RecentTile(project: project) }
                         .buttonStyle(.plain)
-                    }
                 }
+                Button { router.selectedTab = .projects } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 60, height: 76)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                        .foregroundStyle(.white)
+                }
+                .accessibilityLabel("All projects")
             }
         }
+        .scrollClipDisabled()
     }
 
     private var toolsGrid: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Tools").font(.headline)
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(HomeTool.allCases) { tool in
-                    Button { router.start(.tool(tool)) } label: {
-                        ToolTile(tool: tool)
+        LazyVGrid(columns: columns, spacing: 26) {
+            ForEach(HomeTool.allCases) { tool in
+                Button { router.start(.tool(tool)) } label: {
+                    VStack(spacing: 10) {
+                        Image(systemName: tool.symbol)
+                            .font(.system(size: 22, weight: .regular))
+                            .frame(height: 26)
+                        Text(tool.title)
+                            .font(.system(size: 14))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
-                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tool.title)
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+}
+
+struct HomeCreateCard: View {
+    var title: String
+    var symbol: String
+    var badge: String?
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Color.black, in: RoundedRectangle(cornerRadius: 6))
+                Text(title)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.black)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(alignment: .topTrailing) {
+                if let badge {
+                    Text(badge)
+                        .font(.system(size: 10, weight: .medium))
+                        .lineLimit(1)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(.white, in: Capsule())
+                        .foregroundStyle(.black)
+                        .padding(6)
                 }
             }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+}
+
+/// Small cover in Home's recents row with the project name over a scissors glyph.
+struct RecentTile: View {
+    let project: Project
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            Group {
+                if let data = project.thumbnailData, let image = UIImage(data: data) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Rectangle().fill(Color.gray.opacity(0.5))
+                        .overlay(Image(systemName: "film").foregroundStyle(.white.opacity(0.7)))
+                }
+            }
+            .frame(width: 76, height: 76)
+            .clipped()
+            LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
+            HStack(spacing: 3) {
+                Image(systemName: "scissors").font(.system(size: 9))
+                Text(project.name).font(.system(size: 10, weight: .medium)).lineLimit(1)
+            }
+            .foregroundStyle(.white)
+            .padding(5)
+        }
+        .frame(width: 76, height: 76)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(project.name), \(project.duration.timecode) long")
+    }
+}
+
+/// Searches tools and projects from Home.
+struct HomeSearchView: View {
+    @Environment(AppRouter.self) private var router
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Project.updatedAt, order: .reverse) private var projects: [Project]
+    @State private var query = ""
+
+    var body: some View {
+        NavigationStack {
+            List {
+                let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+                let tools = HomeTool.allCases.filter { q.isEmpty || $0.title.lowercased().contains(q) }
+                let matches = projects.filter { q.isEmpty || $0.name.lowercased().contains(q) }
+                if !tools.isEmpty {
+                    Section("Tools") {
+                        ForEach(tools) { tool in
+                            Button {
+                                dismiss()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { router.start(.tool(tool)) }
+                            } label: { Label(tool.title, systemImage: tool.symbol) }
+                        }
+                    }
+                }
+                if !matches.isEmpty {
+                    Section("Projects") {
+                        ForEach(matches.prefix(30)) { project in
+                            Button {
+                                dismiss()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { router.open(project) }
+                            } label: { Label(project.name, systemImage: "film") }
+                        }
+                    }
+                }
+            }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tools and projects")
+            .navigationTitle("Search")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
         }
     }
 }

@@ -232,6 +232,21 @@ final class MediaLibraryService {
         }
     }
 
+    /// Saves a video and returns the new asset's local identifier.
+    nonisolated static func saveVideoToPhotosReturningIdentifier(_ url: URL) async throws -> String {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        guard status == .authorized || status == .limited else {
+            throw VideoEngineError.writerFailed("Photo library access was denied. Enable it in Settings to save videos.")
+        }
+        let box = IdentifierBox()
+        try await PHPhotoLibrary.shared().performChanges {
+            let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+            box.value = request?.placeholderForCreatedAsset?.localIdentifier
+        }
+        guard let id = box.value else { throw VideoEngineError.writerFailed("Could not save the clip to Photos.") }
+        return id
+    }
+
     nonisolated static func saveImageToPhotos(_ image: UIImage) async throws {
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else {
@@ -241,4 +256,19 @@ final class MediaLibraryService {
             PHAssetChangeRequest.creationRequestForAsset(from: image)
         }
     }
+
+    /// Saves an image file (e.g. an animated GIF) as-is so the animation is kept.
+    nonisolated static func saveImageFileToPhotos(_ url: URL) async throws {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else {
+            throw VideoEngineError.writerFailed("Photo library access was denied.")
+        }
+        try await PHPhotoLibrary.shared().performChanges {
+            PHAssetCreationRequest.forAsset().addResource(with: .photo, fileURL: url, options: nil)
+        }
+    }
+}
+
+private final class IdentifierBox: @unchecked Sendable {
+    var value: String?
 }

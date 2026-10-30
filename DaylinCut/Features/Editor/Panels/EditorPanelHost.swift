@@ -21,13 +21,14 @@ extension EditorPanel {
         case .clipper: return "AI clipper"
         case .extend: return "Extend video"
         case .crop: return "Crop & zoom"
+        case .stickers: return "Stickers"
         }
     }
 
     var detents: Set<PresentationDetent> {
         switch self {
         case .autoCut, .transcript, .avatar, .clipper: return [.medium, .large]
-        case .text, .audio, .captions, .generate, .overlay: return [.height(340), .large]
+        case .text, .audio, .captions, .generate, .overlay, .stickers: return [.height(340), .large]
         default: return [.height(300), .medium]
         }
     }
@@ -83,6 +84,7 @@ struct EditorPanelHost: View {
         case .clipper: ClipperPanel(vm: vm)
         case .extend: ExtendPanel(vm: vm)
         case .crop: CropPanel(vm: vm)
+        case .stickers: StickersPanel(vm: vm)
         }
     }
 }

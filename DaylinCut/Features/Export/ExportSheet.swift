@@ -1,26 +1,26 @@
 import SwiftUI
 import UIKit
 
-/// Export settings, size estimate, real AVAssetWriter render with progress,
-/// save to Photos, and sharing (TikTok via the system share sheet).
+/// Export: the full settings page ("More export settings"), real rendering
+/// with progress (AVAssetWriter for video, ImageIO for GIF), save to Photos,
+/// and sharing (TikTok via the system share sheet).
 struct ExportSheet: View {
     @Bindable var vm: EditorViewModel
     @Environment(PurchaseManager.self) private var purchases
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("export.settings") private var stored: Data = Data()
 
-    @State private var settings = ExportSettings()
     @State private var phase: Phase = .configure
     @State private var progress: Double = 0
     @State private var service = ExportService()
+    @State private var gifService = GIFExportService()
     @State private var task: Task<Void, Never>?
     @State private var shareURL: URL?
-    @State private var loaded = false
+    @State private var started = false
 
     enum Phase: Equatable {
         case configure
         case exporting
-        case done(URL, Int64, savedToPhotos: Bool, hdr: Bool)
+        case done(URL, Int64, savedToPhotos: Bool, hdr: Bool, isGIF: Bool)
         case failed(String)
     }
 
@@ -30,11 +30,11 @@ struct ExportSheet: View {
                 switch phase {
                 case .configure: configure
                 case .exporting: exporting
-                case .done(let url, let bytes, let saved, let hdr): done(url: url, bytes: bytes, saved: saved, hdr: hdr)
+                case .done(let url, let bytes, let saved, let hdr, let gif): done(url: url, bytes: bytes, saved: saved, hdr: hdr, isGIF: gif)
                 case .failed(let message): failed(message)
                 }
             }
-            .navigationTitle("Export")
+            .navigationTitle(phase == .configure ? "Export settings" : "Export")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -44,8 +44,10 @@ struct ExportSheet: View {
                 }
             }
         }
+        .environment(\.colorScheme, .dark)
         .interactiveDismissDisabled(phase == .exporting)
-        .onAppear(perform: load)
+        .onAppear(perform: appear)
+        .onDisappear { vm.autoStartExport = false }
         .sheet(item: Binding(get: { shareURL.map(ShareItem.init) }, set: { shareURL = $0?.url }), onDismiss: openPromoteIfNeeded) { item in
             ActivityView(items: [item.url])
         }
@@ -55,144 +57,23 @@ struct ExportSheet: View {
 
     private var configure: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                proToggle("AI ultra HD", subtitle: "Sharpen and upscale every frame", isOn: $settings.aiUltraHD, feature: .ultraHD)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Resolution").font(.headline)
-                        Spacer()
-                        Text(settings.resolution.title).font(.headline).foregroundStyle(Theme.accent)
-                        if settings.resolution.requiresPro && !purchases.isPro { ProBadge() }
-                    }
-                    Slider(value: Binding(
-                        get: { Double(ExportResolution.allCases.firstIndex(of: settings.resolution) ?? 2) },
-                        set: { v in
-                            let r = ExportResolution.allCases[Int(v.rounded())]
-                            if r.requiresPro && !purchases.isPro {
-                                _ = purchases.require(.export4K)
-                                return
-                            }
-                            settings.resolution = r
-                            settings.resetBitrate()
-                        }), in: 0...Double(ExportResolution.allCases.count - 1), step: 1)
-                    .tint(Theme.accent)
-                    .accessibilityLabel("Resolution")
-                    .accessibilityValue(settings.resolution.title)
-                    HStack {
-                        ForEach(ExportResolution.allCases) { Text($0.title).font(.caption2).frame(maxWidth: .infinity) }
-                    }
-                    .foregroundStyle(.secondary)
-                    Text(settings.resolution.subtitle).font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 22) {
+                Picker("Format", selection: $vm.exportSettings.format) {
+                    ForEach(ExportFormat.allCases) { Text($0 == .video ? "Video" : "GIF").tag($0) }
                 }
+                .pickerStyle(.segmented)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Frame rate").font(.headline)
-                        Spacer()
-                        Text("\(settings.frameRate) fps").font(.headline).foregroundStyle(Theme.accent)
-                    }
-                    Slider(value: Binding(
-                        get: { Double(ExportSettings.frameRates.firstIndex(of: settings.frameRate) ?? 2) },
-                        set: { v in
-                            settings.frameRate = ExportSettings.frameRates[Int(v.rounded())]
-                            settings.resetBitrate()
-                        }), in: 0...Double(ExportSettings.frameRates.count - 1), step: 1)
-                    .tint(Theme.accent)
-                    .accessibilityLabel("Frame rate")
-                    .accessibilityValue("\(settings.frameRate) frames per second")
-                    HStack {
-                        ForEach(ExportSettings.frameRates, id: \.self) { Text("\($0)").font(.caption2).frame(maxWidth: .infinity) }
-                    }
-                    .foregroundStyle(.secondary)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Bitrate").font(.headline)
-                        Spacer()
-                        Text(String(format: "%.1f Mbps", settings.bitrateMbps)).font(.headline.monospacedDigit()).foregroundStyle(Theme.accent)
-                    }
-                    Slider(value: $settings.bitrateMbps, in: 1...max(60, settings.recommendedBitrate * 2), step: 0.5).tint(Theme.accent)
-                        .accessibilityLabel("Bitrate")
-                    HStack {
-                        Text("Recommended \(String(format: "%.1f", settings.recommendedBitrate)) Mbps").font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Reset") { settings.resetBitrate() }.font(.caption)
-                    }
-                }
-
-                proToggle("Smart HDR", subtitle: "10-bit HEVC with HLG for brighter highlights", isOn: $settings.smartHDR, feature: .smartHDR)
-
-                if purchases.isPro {
-                    Toggle("Add Daylin Cut watermark", isOn: $settings.addWatermark).tint(Theme.accent)
-                } else {
-                    Button { _ = purchases.require(.noWatermark) } label: {
-                        HStack {
-                            Text("Remove watermark")
-                            Spacer()
-                            ProBadge()
-                        }
-                    }
-                    .foregroundStyle(.primary)
-                }
-
-                Divider()
-                Toggle(isOn: $settings.shareToTikTok) {
-                    Label("Save and share to TikTok", systemImage: "music.note.tv")
-                }
-                .tint(Theme.accent)
-                if settings.shareToTikTok {
-                    Toggle(isOn: $settings.tikTokPromote) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("TikTok Promote")
-                            Text("Opens TikTok after posting so you can boost the video with Promote.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    .tint(Theme.accent)
-                }
-                Toggle("Save to Photos", isOn: $settings.saveToPhotos).tint(Theme.accent)
-
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text("Estimated file size").font(.subheadline).foregroundStyle(.secondary)
-                        Text(settings.estimatedSizeText(duration: vm.duration)).font(.title3.weight(.bold).monospacedDigit())
-                    }
-                    Spacer()
-                    let size = settings.renderSize(for: vm.timeline.aspectRatio)
-                    VStack(alignment: .trailing) {
-                        Text("\(size.width)×\(size.height)").font(.subheadline.monospacedDigit())
-                        Text(vm.duration.timecode).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(14)
-                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
-                .accessibilityElement(children: .combine)
+                ExportOptionsForm(settings: $vm.exportSettings, style: .full, duration: vm.duration,
+                                  aspect: vm.timeline.aspectRatio, previewUltraHD: $vm.previewUltraHD)
 
                 Button { start() } label: {
-                    Text("Export").font(.headline).frame(maxWidth: .infinity)
+                    Text(vm.exportSettings.format == .gif ? "Export GIF" : "Export").font(.headline).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(PillButtonStyle())
             }
             .padding(20)
         }
-    }
-
-    private func proToggle(_ title: String, subtitle: String, isOn: Binding<Bool>, feature: PurchaseManager.Feature) -> some View {
-        Toggle(isOn: Binding(get: { isOn.wrappedValue }, set: { v in
-            if v && !purchases.require(feature) { return }
-            isOn.wrappedValue = v
-        })) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(title).font(.headline)
-                    if !purchases.isPro { ProBadge() }
-                }
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .tint(Theme.accent)
+        .background(Theme.panel.ignoresSafeArea())
     }
 
     // MARK: Exporting
@@ -201,7 +82,7 @@ struct ExportSheet: View {
         VStack(spacing: 24) {
             Spacer()
             ZStack {
-                Circle().stroke(Theme.surfaceRaised, lineWidth: 10)
+                Circle().stroke(Theme.chip, lineWidth: 10)
                 Circle().trim(from: 0, to: progress)
                     .stroke(Theme.accent, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                     .rotationEffect(.degrees(-90))
@@ -211,19 +92,27 @@ struct ExportSheet: View {
             .accessibilityElement()
             .accessibilityLabel("Exporting")
             .accessibilityValue("\(Int(progress * 100)) percent")
-            Text("Exporting \(settings.resolution.title) · \(settings.frameRate) fps").font(.headline)
+            Text(exportingTitle).font(.headline)
             Text("Keep Daylin Cut open until the export finishes.").font(.subheadline).foregroundStyle(.secondary)
             Spacer()
         }
         .frame(maxWidth: .infinity)
+        .background(Theme.panel.ignoresSafeArea())
     }
 
-    private func done(url: URL, bytes: Int64, saved: Bool, hdr: Bool) -> some View {
+    private var exportingTitle: String {
+        let s = vm.exportSettings
+        if s.format == .gif { return "Exporting GIF · \(s.gifShortSide)P · \(s.gifFrameRate) fps" }
+        let res = s.resolution.requiresPro && !purchases.isPro ? ExportResolution.p1080 : s.resolution
+        return "Exporting \(res.title) · \(s.frameRate) fps · \(Int(s.bitrateMbps)) Mbps"
+    }
+
+    private func done(url: URL, bytes: Int64, saved: Bool, hdr: Bool, isGIF: Bool) -> some View {
         VStack(spacing: 18) {
             Spacer()
             Image(systemName: "checkmark.circle.fill").font(.system(size: 64)).foregroundStyle(Theme.accent)
             Text(saved ? "Saved to Photos" : "Export complete").font(.title2.weight(.bold))
-            Text("\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))\(hdr ? " · HDR" : "")")
+            Text("\(isGIF ? "GIF · " : "")\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))\(hdr ? " · HDR" : "")")
                 .foregroundStyle(.secondary)
             Button { shareTikTok(url) } label: { Label("Share to TikTok", systemImage: "music.note.tv").frame(maxWidth: .infinity) }
                 .buttonStyle(PillButtonStyle())
@@ -232,6 +121,7 @@ struct ExportSheet: View {
             Spacer()
         }
         .padding(24)
+        .background(Theme.panel.ignoresSafeArea())
     }
 
     private func failed(_ message: String) -> some View {
@@ -240,51 +130,62 @@ struct ExportSheet: View {
             Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 50)).foregroundStyle(.orange)
             Text("Export failed").font(.title3.weight(.bold))
             Text(message).multilineTextAlignment(.center).foregroundStyle(.secondary)
-            Button("Try again") { phase = .configure }.buttonStyle(PillButtonStyle())
+            Button("Try again") { start() }.buttonStyle(PillButtonStyle())
+            Button("Settings") { phase = .configure }.buttonStyle(PillButtonStyle(filled: false))
             Spacer()
         }
         .padding(24)
+        .background(Theme.panel.ignoresSafeArea())
     }
 
     // MARK: Actions
 
-    private func load() {
-        guard !loaded else { return }
-        loaded = true
-        if let s = try? JSONDecoder().decode(ExportSettings.self, from: stored) { settings = s } else if purchases.isPro { settings.addWatermark = false }
-        settings.resolution = vm.previewResolution.requiresPro && !purchases.isPro ? .p1080 : vm.previewResolution
+    private func appear() {
         if !purchases.isPro {
-            settings.addWatermark = true
-            settings.aiUltraHD = false
-            settings.smartHDR = false
+            vm.exportSettings.addWatermark = true
+            if vm.exportSettings.resolution.requiresPro { vm.exportSettings.resolution = .p1080; vm.exportSettings.resetBitrate() }
+            vm.exportSettings.aiUltraHD = false
+            vm.exportSettings.smartHDR = false
         }
-        settings.resetBitrate()
+        if vm.autoStartExport && !started { start() }
     }
 
     private func start() {
-        if let data = try? JSONEncoder().encode(settings) { stored = data }
+        started = true
         vm.pause()
+        vm.showExportOptions = false
         phase = .exporting
         progress = 0
-        let service = ExportService()
-        self.service = service
         let timeline = vm.timeline
-        let settings = settings
+        let settings = vm.exportSettings
         let isPro = purchases.isPro
+        let service = ExportService()
+        let gifService = GIFExportService()
+        self.service = service
+        self.gifService = gifService
         UIApplication.shared.isIdleTimerDisabled = true
         task = Task {
             defer { UIApplication.shared.isIdleTimerDisabled = false }
             do {
-                let result = try await service.export(timeline: timeline, settings: settings, isPro: isPro) { p in
-                    Task { @MainActor in progress = max(progress, p) }
+                let report: @Sendable (Double) -> Void = { p in Task { @MainActor in progress = max(progress, p) } }
+                if settings.format == .gif {
+                    let result = try await gifService.export(timeline: timeline, settings: settings, isPro: isPro, progress: report)
+                    var saved = false
+                    if settings.saveToPhotos || settings.shareToTikTok {
+                        try await MediaLibraryService.saveImageFileToPhotos(result.url)
+                        saved = true
+                    }
+                    phase = .done(result.url, result.bytes, savedToPhotos: saved, hdr: false, isGIF: true)
+                } else {
+                    let result = try await service.export(timeline: timeline, settings: settings, isPro: isPro, progress: report)
+                    var saved = false
+                    if settings.saveToPhotos || settings.shareToTikTok {
+                        try await MediaLibraryService.saveVideoToPhotos(result.url)
+                        saved = true
+                    }
+                    phase = .done(result.url, result.bytes, savedToPhotos: saved, hdr: result.usedHDR, isGIF: false)
+                    if settings.shareToTikTok { shareTikTok(result.url) }
                 }
-                var saved = false
-                if settings.saveToPhotos || settings.shareToTikTok {
-                    try await MediaLibraryService.saveVideoToPhotos(result.url)
-                    saved = true
-                }
-                phase = .done(result.url, result.bytes, savedToPhotos: saved, hdr: result.usedHDR)
-                if settings.shareToTikTok { shareTikTok(result.url) }
             } catch is CancellationError {
                 phase = .configure
             } catch VideoEngineError.cancelled {
@@ -297,6 +198,7 @@ struct ExportSheet: View {
 
     private func cancel() {
         service.cancel()
+        gifService.cancel()
         task?.cancel()
         phase = .configure
     }
@@ -310,7 +212,8 @@ struct ExportSheet: View {
     /// After sharing, TikTok Promote opens the TikTok app (or its website)
     /// so the user can boost the post they just made.
     private func openPromoteIfNeeded() {
-        guard settings.shareToTikTok, settings.tikTokPromote else { return }
+        let s = vm.exportSettings
+        guard s.shareToTikTok, s.tikTokPromote else { return }
         guard let app = URL(string: "tiktok://"), let web = URL(string: "https://www.tiktok.com/") else { return }
         UIApplication.shared.open(app) { opened in
             if !opened { UIApplication.shared.open(web) }

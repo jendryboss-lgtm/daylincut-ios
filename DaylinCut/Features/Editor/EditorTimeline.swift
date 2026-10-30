@@ -41,12 +41,25 @@ struct EditorTimeline: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ruler(originX: originX, width: width)
                     clipsRow(originX: originX, width: width)
-                    textRow(originX: originX)
                     audioRow(originX: originX)
+                    textRow(originX: originX)
                     if !vm.timeline.overlays.isEmpty { overlayRow(originX: originX) }
                     if !vm.timeline.captions.isEmpty { captionRow(originX: originX) }
                 }
                 .padding(.top, 6)
+
+                leftColumn(width: width)
+
+                // Add media, pinned to the right edge like CapCut.
+                Button { vm.showAddMedia = true } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 34, height: 34)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: 6))
+                        .foregroundStyle(.black)
+                }
+                .accessibilityLabel("Add media")
+                .offset(x: width - 34 - 10, y: 6 + rulerHeight + 6 + (clipHeight - 34) / 2)
 
                 // Playhead
                 Rectangle()
@@ -112,20 +125,34 @@ struct EditorTimeline: View {
         let pps = vm.pixelsPerSecond
         let step: Double = pps > 160 ? 0.5 : pps > 60 ? 1 : pps > 30 ? 2 : 5
         let first = max(0, floor((0 - Double(originX)) / Double(pps) / step) * step)
-        let last = min(vm.duration, (Double(width - originX) / Double(pps)))
+        let last = min(max(vm.duration, step * 2), (Double(width - originX) / Double(pps)))
         let ticks = stride(from: first, through: max(first, last), by: step).map { $0 }
         return ZStack(alignment: .topLeading) {
             ForEach(ticks, id: \.self) { t in
-                VStack(spacing: 1) {
-                    Text(t.shortSeconds).font(.system(size: 9).monospacedDigit()).foregroundStyle(.secondary)
-                    Circle().fill(.secondary).frame(width: 2, height: 2)
+                let labelled = Int((t / step).rounded()) % 2 == 0
+                Group {
+                    if labelled {
+                        Text(t.timecode).font(.system(size: 10).monospacedDigit()).foregroundStyle(Theme.mutedText)
+                    } else {
+                        Circle().fill(Theme.mutedText).frame(width: 3, height: 3)
+                    }
                 }
                 .fixedSize()
-                .offset(x: x(t, originX) - 10)
+                .frame(width: 40)
+                .offset(x: x(t, originX) - 20)
             }
+            // Current / total time, fixed at the left like CapCut.
+            HStack(spacing: 3) {
+                Text(vm.currentTime.timecode).foregroundStyle(.white)
+                Text("/ \(vm.duration.timecode)").foregroundStyle(Theme.mutedText)
+            }
+            .font(.system(size: 11).monospacedDigit())
+            .padding(.leading, 16).padding(.trailing, 10)
+            .frame(height: rulerHeight)
+            .background(Theme.timelineBackground)
+            .accessibilityLabel("Time \(vm.currentTime.timecode) of \(vm.duration.timecode)")
         }
         .frame(height: rulerHeight, alignment: .topLeading)
-        .accessibilityHidden(true)
     }
 
     private func clipsRow(originX: CGFloat, width: CGFloat) -> some View {
@@ -159,27 +186,17 @@ struct EditorTimeline: View {
                     }
                 }
             }
-            // Add media + Add ending at the end of the video.
-            HStack(spacing: 8) {
-                Button { vm.showAddMedia = true } label: {
-                    Image(systemName: "plus")
-                        .font(.headline)
-                        .frame(width: 40, height: 40)
-                        .background(Color.white, in: RoundedRectangle(cornerRadius: 8))
-                        .foregroundStyle(.black)
-                }
-                .accessibilityLabel("Add media")
-                Button { vm.addEnding() } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: "flag.checkered")
-                        Text("Add ending").font(.system(size: 9, weight: .semibold))
-                    }
-                    .frame(width: 56, height: 44)
-                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 8))
-                }
-                .foregroundStyle(.primary)
+            // "+ Add ending" right after the last clip.
+            Button { vm.addEnding() } label: {
+                Label("Add ending", systemImage: "plus")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .frame(height: clipHeight)
+                    .background(Theme.chip, in: UnevenRoundedRectangle(bottomTrailingRadius: 6, topTrailingRadius: 6))
             }
-            .offset(x: x(layout.totalDuration, originX) + 12, y: (clipHeight - 44) / 2)
+            .accessibilityLabel("Add ending")
+            .offset(x: x(layout.totalDuration, originX))
         }
         .frame(height: clipHeight, alignment: .topLeading)
     }
@@ -196,6 +213,76 @@ struct EditorTimeline: View {
                 .foregroundStyle(.black)
         }
         .accessibilityLabel("Transition: \(clip.transition.type.title)")
+    }
+
+    /// Fixed column to the left of the playhead: Mute clip audio, AI clipper,
+    /// Cover, plus the audio/text row icons.
+    private func leftColumn(width: CGFloat) -> some View {
+        let columnWidth = max(150, width / 2 - 26)
+        return VStack(alignment: .trailing, spacing: 6) {
+            Color.clear.frame(height: rulerHeight)
+            HStack(spacing: 6) {
+                Button { vm.toggleMuteClipAudio() } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: vm.timeline.muteOriginalAudio ? "speaker.slash" : "speaker.wave.1")
+                            .font(.system(size: 17))
+                        Text(vm.timeline.muteOriginalAudio ? "Unmute clip audio" : "Mute clip audio")
+                            .font(.system(size: 9)).multilineTextAlignment(.center).lineLimit(2)
+                    }
+                    .frame(width: 54, height: clipHeight)
+                }
+                .accessibilityLabel(vm.timeline.muteOriginalAudio ? "Unmute clip audio" : "Mute clip audio")
+                Button { vm.panel = .clipper } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: "scissors.badge.ellipsis").font(.system(size: 17)).foregroundStyle(Theme.accent)
+                        Text("AI clipper").font(.system(size: 9))
+                    }
+                    .frame(width: 54, height: clipHeight)
+                    .background(Theme.chip, in: RoundedRectangle(cornerRadius: 6))
+                }
+                Button { Task { await vm.setCoverFromCurrentFrame() } } label: {
+                    ZStack {
+                        if let cover = vm.coverImage {
+                            Image(uiImage: cover).resizable().scaledToFill()
+                        } else {
+                            Theme.chip
+                        }
+                        Color.black.opacity(0.35)
+                        VStack(spacing: 2) {
+                            Image(systemName: "pencil").font(.system(size: 15))
+                            Text("Cover").font(.system(size: 9))
+                        }
+                    }
+                    .frame(width: 54, height: clipHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .accessibilityLabel("Set cover from current frame")
+            }
+            .foregroundStyle(.white)
+            rowIcon("music.note", label: "Audio") { vm.panel = .audio }
+            rowIcon("textformat.size.larger", label: "Text") { _ = vm.addText(); vm.panel = .text }
+        }
+        .padding(.top, 6)
+        .padding(.trailing, 10)
+        .frame(width: columnWidth, alignment: .trailing)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(
+            LinearGradient(stops: [.init(color: Theme.timelineBackground, location: 0.88),
+                                   .init(color: Theme.timelineBackground.opacity(0), location: 1)],
+                           startPoint: .leading, endPoint: .trailing)
+        )
+    }
+
+    private func rowIcon(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 14))
+                .frame(width: 34, height: rowHeight)
+                .background(Theme.chip, in: RoundedRectangle(cornerRadius: 6))
+                .foregroundStyle(Theme.mutedText)
+        }
+        .frame(width: 54)
+        .accessibilityLabel(label)
     }
 
     private func trimHandles(for clip: Clip) -> some View {
@@ -282,12 +369,12 @@ struct EditorTimeline: View {
     private func placeholder(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: "plus")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 8)
                 .frame(height: rowHeight)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 6))
+                .background(Theme.chip.opacity(0.8), in: RoundedRectangle(cornerRadius: 4))
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Theme.mutedText)
     }
 }
 

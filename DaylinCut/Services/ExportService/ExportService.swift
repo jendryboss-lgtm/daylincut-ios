@@ -37,7 +37,8 @@ final class ExportService: @unchecked Sendable {
                 progress: @escaping @Sendable (Double) -> Void) async throws -> Result {
         var settings = settings
         if !isPro && settings.resolution.requiresPro { settings.resolution = .p1080 }
-        let watermark = settings.addWatermark || !isPro
+        // Sharing straight to TikTok exports "Without Daylin Cut watermark" for everyone.
+        let watermark = settings.shareToTikTok ? false : (settings.addWatermark || !isPro)
         do {
             return try await render(timeline: timeline, settings: settings, watermark: watermark, hdr: settings.smartHDR, progress: progress)
         } catch let error where settings.smartHDR && !(error is CancellationError) && (error as? VideoEngineError) != .cancelled {
@@ -95,7 +96,7 @@ final class ExportService: @unchecked Sendable {
                 AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_2020
             ]
         } else {
-            videoSettings[AVVideoCodecKey] = size.width * size.height > 1920 * 1080 ? AVVideoCodecType.hevc : AVVideoCodecType.h264
+            videoSettings[AVVideoCodecKey] = settings.usesHEVC(width: Int(size.width), height: Int(size.height)) ? AVVideoCodecType.hevc : AVVideoCodecType.h264
             if videoSettings[AVVideoCodecKey] as? AVVideoCodecType == .h264 {
                 compression[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel
             }

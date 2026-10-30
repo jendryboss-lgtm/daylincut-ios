@@ -13,9 +13,9 @@ enum EditorSelection: Hashable {
     case caption(UUID)
 }
 
-enum EditorPanel: String, Identifiable, Hashable {
+enum EditorPanel: String, Identifiable, Hashable, CaseIterable {
     case speed, volume, transition, filters, adjust, effects, text, audio, overlay, captions, transcript
-    case avatar, generate, aspect, autoCut, clipper, extend, crop
+    case avatar, generate, aspect, autoCut, clipper, extend, crop, stickers
     var id: String { rawValue }
 }
 
@@ -57,7 +57,43 @@ final class EditorViewModel {
     var workTitle = ""
     var toast: String?
     var pixelsPerSecond: CGFloat = 60
-    var previewResolution: ExportResolution = .p1080
+    /// Export choices shared by the top-bar dropdown, the full sheet and the export run.
+    var exportSettings: ExportSettings = EditorViewModel.loadExportSettings() {
+        didSet { if exportSettings != oldValue { Self.storeExportSettings(exportSettings) } }
+    }
+    /// The dropdown under the top bar (compact from "1080P", expanded from "AI UHD").
+    var showExportOptions = false
+    var exportOptionsExpanded = false
+    /// When true the export sheet starts rendering as soon as it opens.
+    var autoStartExport = false
+    var showFullscreen = false
+    var showSearch = false
+    /// Preview the AI ultra HD look in the player ("Preview" in the export panel).
+    var previewUltraHD = false {
+        didSet { if previewUltraHD != oldValue { rebuild() } }
+    }
+
+    var previewResolution: ExportResolution {
+        get { exportSettings.resolution }
+        set {
+            exportSettings.resolution = newValue
+            exportSettings.resetBitrate()
+        }
+    }
+
+    nonisolated static let exportSettingsKey = "export.settings"
+
+    nonisolated static func loadExportSettings() -> ExportSettings {
+        if let data = UserDefaults.standard.data(forKey: exportSettingsKey),
+           let s = try? JSONDecoder().decode(ExportSettings.self, from: data) {
+            return s
+        }
+        return ExportSettings()
+    }
+
+    nonisolated static func storeExportSettings(_ s: ExportSettings) {
+        if let data = try? JSONEncoder().encode(s) { UserDefaults.standard.set(data, forKey: exportSettingsKey) }
+    }
 
     private var workTask: Task<Void, Never>?
 
@@ -177,6 +213,7 @@ final class EditorViewModel {
         let short = min(720, previewResolution.shortSide)
         let size = timeline.aspectRatio.renderSize(shortSide: short)
         options.renderSize = CGSize(width: size.width, height: size.height)
+        if previewUltraHD { options.ultraHD = true }
         return options
     }
 
@@ -299,23 +336,57 @@ final class EditorViewModel {
         apply { $0.insert(clips, at: $0.clips.isEmpty ? nil : currentTime) }
     }
 
-    /// "Add ending": a branded end card with the project title.
+    /// "Add ending": renders a branded end-card clip and appends it with a
+    /// fade-to-black and a title (see `Timeline.appendEnding`).
     func addEnding() {
         runWork("Adding ending") { vm, progress in
             let aspect = vm.timeline.aspectRatio
-            var clip = try await AIServiceProvider.current.generateVideo(prompt: "Thanks for watching", duration: 2.5,
-                                                                          aspect: aspect, progress: progress)
-            clip.transition = Transition()
-            let start = vm.duration
-            vm.apply { tl in
-                if !tl.clips.isEmpty { tl.clips[tl.clips.count - 1].transition = Transition(type: .fadeBlack, duration: 0.5) }
-                tl.clips.append(clip)
-            }
-            vm.apply { tl in
-                tl.texts.append(TextOverlay(text: "Thanks for watching", start: max(0, start - 0.3), duration: 2.6,
-                                            centerY: 0.5, fontScale: 0.06, style: .neon, animation: .pop))
-            }
+            let clip = try await AIServiceProvider.current.generateVideo(prompt: Timeline.endingTitle, duration: Timeline.endingDuration,
+                                                                         aspect: aspect, progress: progress)
+            vm.apply { $0.appendEnding(clip) }
+            vm.seek(to: max(0, vm.duration - Timeline.endingDuration))
+            vm.show("Ending added")
         }
+    }
+
+    // MARK: Stickers
+
+    func addSticker(_ emoji: String) {
+        let t = TextOverlay(text: emoji, start: min(currentTime, max(0, duration - 1)), duration: min(3, max(0.5, duration - currentTime)),
+                            centerX: 0.5, centerY: 0.4, fontScale: 0.14, colorHex: "#FFFFFF", style: .plain, animation: .pop)
+        apply { $0.texts.append(t) }
+        selection = .text(t.id)
+    }
+
+    // MARK: Cover
+
+    /// Whether the user picked a cover frame (so auto thumbnails don't replace it).
+    var hasCustomCover: Bool { UserDefaults.standard.bool(forKey: "cover.\(project.id.uuidString)") }
+
+    /// "Cover": uses the frame under the playhead as the project cover.
+    func setCoverFromCurrentFrame() async {
+        guard let image = await currentFrame(maxSize: CGSize(width: 480, height: 480)),
+              let data = image.jpegData(compressionQuality: 0.8) else {
+            show("Couldn't grab this frame")
+            return
+        }
+        project.thumbnailData = data
+        UserDefaults.standard.set(true, forKey: "cover.\(project.id.uuidString)")
+        try? project.modelContext?.save()
+        coverVersion += 1
+        show("Cover updated")
+    }
+
+    var coverVersion = 0
+
+    var coverImage: UIImage? {
+        _ = coverVersion
+        return project.thumbnailData.flatMap(UIImage.init(data:))
+    }
+
+    func toggleMuteClipAudio() {
+        apply { $0.muteOriginalAudio.toggle() }
+        show(timeline.muteOriginalAudio ? "Clip audio muted" : "Clip audio on")
     }
 
     // MARK: Text
@@ -419,6 +490,24 @@ final class EditorViewModel {
     }
 
     // MARK: AI tools
+
+    /// Review screen: re-cuts the original footage with a template's AutoCut
+    /// recipe and title card. `base` is the timeline before any look.
+    func applyTemplate(_ template: TemplatePreset, base: Timeline, captions: Bool = false) {
+        runWork(template.title) { vm, progress in
+            let outcome = try await AutoCutEngine.run(on: base, settings: template.settings) { p, _ in progress(p) }
+            vm.apply { $0 = template.decorate(outcome.timeline) }
+            vm.seek(to: 0)
+            if captions { vm.generateCaptions() } else if !vm.isPlaying { vm.togglePlay() }
+        }
+    }
+
+    /// Review screen: back to the footage as compiled.
+    func restore(_ base: Timeline) {
+        cancelWork()
+        apply { $0 = base }
+        seek(to: 0)
+    }
 
     func runAutoCut(_ settings: AutoCutSettings) {
         runWork("AutoCut") { vm, progress in
@@ -563,7 +652,7 @@ final class EditorViewModel {
     }
 
     func refreshThumbnail() async {
-        guard let context = project.modelContext else { return }
+        guard let context = project.modelContext, !hasCustomCover else { return }
         await ProjectStore.updateThumbnail(project, context: context)
     }
 

@@ -4,6 +4,8 @@ import SwiftUI
 struct RootTabView: View {
     @Environment(AppRouter.self) private var router
     @Environment(PurchaseManager.self) private var purchases
+    @Environment(MediaLibraryService.self) private var library
+    @Environment(\.modelContext) private var context
 
     var body: some View {
         @Bindable var router = router
@@ -13,19 +15,21 @@ struct RootTabView: View {
                 .tabItem { Label("Edit", systemImage: "scissors") }
                 .tag(AppTab.edit)
             TemplatesView()
-                .tabItem { Label("Templates", systemImage: "square.grid.2x2") }
+                .tabItem { Label("Templates", systemImage: "rectangle.portrait.on.rectangle.portrait") }
                 .tag(AppTab.templates)
             AILabView()
-                .tabItem { Label("AI Lab", systemImage: "sparkles") }
+                .tabItem { Label("AI Lab", systemImage: "atom") }
                 .tag(AppTab.aiLab)
                 .badge(router.aiLabBadge ? Text("New") : nil)
             ProjectsView()
                 .tabItem { Label("Projects", systemImage: "folder") }
                 .tag(AppTab.projects)
             MeView()
-                .tabItem { Label("Me", systemImage: "person.crop.circle") }
+                .tabItem { Label("Me", systemImage: "person") }
                 .tag(AppTab.me)
         }
+        .tint(.primary)
+        .task { await UIScreenHarness.run(router: router, context: context, library: library) }
         .onChange(of: router.selectedTab) { _, tab in
             if tab == .aiLab { router.aiLabBadge = false }
         }
@@ -53,22 +57,40 @@ struct CreationFlowView: View {
             if let flow = router.flow {
                 switch flow.stage {
                 case .picking:
-                    MediaPickerView(mode: router.pickerMode,
-                                    onCancel: { router.dismissFlow() },
-                                    onDone: { assets in
-                                        router.flow?.stage = .compiling(assets.map { PHAssetBox(asset: $0) })
-                                    })
-                case .compiling(let boxes):
-                    CompilingView(assets: boxes.map(\.asset), intent: flow.intent) { outcome in
+                    if flow.intent == .newVideo {
+                        MediaPickerView(mode: router.pickerMode,
+                                        onCancel: { router.dismissFlow() },
+                                        onDone: { assets in
+                                            router.flow?.stage = .compiling(assets.map { PHAssetBox(asset: $0) }, "")
+                                        },
+                                        onCreate: { assets, prompt in
+                                            router.flow?.stage = .compiling(assets.map { PHAssetBox(asset: $0) }, prompt)
+                                        })
+                    } else {
+                        MediaPickerView(mode: router.pickerMode,
+                                        onCancel: { router.dismissFlow() },
+                                        onDone: { assets in
+                                            router.flow?.stage = .compiling(assets.map { PHAssetBox(asset: $0) }, "")
+                                        })
+                    }
+                case .compiling(let boxes, let prompt):
+                    CompilingView(assets: boxes.map(\.asset), intent: flow.intent, prompt: prompt) { outcome in
                         switch outcome {
-                        case .project(let project):
-                            router.flow?.stage = .editing(project, router.launchAction == .autoCut && isTemplate(flow.intent) ? .none : router.launchAction)
+                        case .project(let project, let base):
+                            if flow.intent == .newVideo {
+                                router.flow?.stage = .review(project, base)
+                            } else {
+                                router.flow?.stage = .editing(project, router.launchAction == .autoCut && isTemplate(flow.intent) ? .none : router.launchAction)
+                            }
                         case .photo(let image):
                             router.flow?.stage = .photo(image, photoOperation(for: flow.intent))
                         case .cancelled:
                             router.flow?.stage = .picking
                         }
                     }
+                case .review(let project, let base):
+                    ReviewView(project: project, base: base)
+                        .id(project.id)
                 case .editing(let project, let action):
                     EditorView(project: project, launchAction: action)
                         .id(project.id)

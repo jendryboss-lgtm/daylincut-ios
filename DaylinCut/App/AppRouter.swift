@@ -9,6 +9,10 @@ enum AppTab: Hashable { case edit, templates, aiLab, projects, me }
 /// What the editor should do right after it opens.
 enum EditorLaunchAction: Hashable {
     case none, autoCut, captions, clipper, remove, enhance, text, extend
+    /// Opens the export options panel (used by the review screen and UI screenshots).
+    case exportOptions
+    /// Opens the full export sheet without starting the export.
+    case exportSheet
 }
 
 /// Which media the picker allows.
@@ -28,7 +32,11 @@ enum CreationIntent: Hashable {
 struct CreationFlow: Identifiable {
     enum Stage {
         case picking
-        case compiling([PHAssetBox])
+        /// Assets plus the "What do you want to create?" prompt (may be empty).
+        case compiling([PHAssetBox], String)
+        /// CapCut's result screen: preview, looks tray, Export; `Timeline` is the
+        /// footage as compiled, so looks can be re-applied from scratch.
+        case review(Project, Timeline)
         case editing(Project, EditorLaunchAction)
         case photo(UIImage, PhotoOperation?)
         case camera
@@ -126,18 +134,18 @@ enum HomeTool: String, CaseIterable, Identifiable, Hashable {
 
     var symbol: String {
         switch self {
-        case .autoCut: return "scissors"
-        case .retouch: return "face.smiling"
-        case .aiGenerator: return "sparkles"
-        case .photoTools: return "photo.on.rectangle.angled"
-        case .storyMaker: return "book.pages"
-        case .shootAndRecord: return "camera"
+        case .autoCut: return "play.rectangle"
+        case .retouch: return "face.dashed"
+        case .aiGenerator: return "sparkles.rectangle.stack"
+        case .photoTools: return "photo.badge.plus"
+        case .storyMaker: return "book"
+        case .shootAndRecord: return "record.circle"
         case .autoEnhance: return "wand.and.stars"
-        case .coverMaker: return "rectangle.portrait.on.rectangle.portrait"
+        case .coverMaker: return "rectangle.portrait.and.arrow.forward"
         case .autoCaptions: return "captions.bubble"
-        case .aiClipper: return "film.stack"
-        case .remove: return "person.crop.rectangle.badge.minus"
-        case .aiPhotoEditor: return "photo.badge.plus"
+        case .aiClipper: return "scissors.badge.ellipsis"
+        case .remove: return "person.and.background.dotted"
+        case .aiPhotoEditor: return "photo.on.rectangle.angled"
         }
     }
 
