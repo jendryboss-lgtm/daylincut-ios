@@ -107,6 +107,7 @@ jobs:
           echo "App: $APP"
           mkdir -p artifacts/screens
           xcrun simctl bootstatus "$UDID" -b || true
+          xcrun simctl privacy "$UDID" grant photos "$BID" || true
           xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 || true
           xcrun simctl install "$UDID" "$APP"
           BID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
@@ -118,6 +119,7 @@ jobs:
           xcrun simctl shutdown "$UDID" || true
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b || true
+          xcrun simctl privacy "$UDID" grant photos "$BID" || true
           xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 || true
           shoot() {
             local screen="$1" wait="$2"
@@ -125,11 +127,12 @@ jobs:
             sleep "$wait"
             xcrun simctl io "$UDID" screenshot "artifacts/screens/daylincut-$screen.png"
           }
-          shoot home 20
+          shoot home 25   # warm-up after reboot; re-shot below with recents
           shoot review 18
           shoot editor 18
           shoot exportOptions 18
           shoot export 18
+          shoot home 20
           shoot picker 30
           xcrun simctl terminate "$UDID" "$BID" || true
           ls -la artifacts/screens
