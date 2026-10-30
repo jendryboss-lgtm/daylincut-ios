@@ -57,7 +57,8 @@ enum UIScreenHarness {
 
     /// Saves sample clips to Photos (CI grants access with `simctl privacy`).
     static func seedPhotoLibrary() async {
-        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        // CI grants access up front; never prompt from the harness.
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard status == .authorized || status == .limited else { return }
         let existing = PHAsset.fetchAssets(with: .video, options: nil).count
         guard existing < 4 else { return }
@@ -78,7 +79,6 @@ enum UIScreenHarness {
             }
         case .picker:
             await seedPhotoLibrary()
-            await library.requestAccess()
             router.start(.newVideo)
         case .review, .editor, .exportOptions, .export:
             guard let timeline = try? await sampleTimeline() else { return }

@@ -110,10 +110,10 @@ jobs:
           xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 || true
           xcrun simctl install "$UDID" "$APP"
           BID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
-          xcrun simctl privacy "$UDID" grant photos "$BID" || true
-          xcrun simctl privacy "$UDID" grant photos-add "$BID" || true
+          # Full (read/write) Photos access last so an "add only" grant can't override it.
           xcrun simctl privacy "$UDID" grant camera "$BID" || true
           xcrun simctl privacy "$UDID" grant microphone "$BID" || true
+          xcrun simctl privacy "$UDID" grant photos "$BID" || true
           shoot() {
             local screen="$1" wait="$2"
             xcrun simctl launch --terminate-running-process "$UDID" "$BID" -uiTesting -uiScreen "$screen"
