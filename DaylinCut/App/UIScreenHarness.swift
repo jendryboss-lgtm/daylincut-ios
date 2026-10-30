@@ -10,6 +10,11 @@ enum UIScreenHarness {
         case home, picker, review, editor, exportOptions, export
     }
 
+    static var isScreenshotRun: Bool {
+        let args = ProcessInfo.processInfo.arguments
+        return args.contains("-uiTesting") && args.contains("-uiScreen")
+    }
+
     static func screen(from arguments: [String] = ProcessInfo.processInfo.arguments) -> Screen? {
         guard let i = arguments.firstIndex(of: "-uiScreen"), i + 1 < arguments.count else { return nil }
         return Screen(rawValue: arguments[i + 1])

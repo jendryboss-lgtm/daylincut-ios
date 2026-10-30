@@ -55,7 +55,15 @@ struct MediaPickerView: View {
         .preferredColorScheme(.dark)
         .task {
             if mode == .photosOnly { filter = .photos }
-            if !library.isAuthorized { await library.requestAccess() } else { library.loadAlbums() }
+            library.authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            if library.isAuthorized {
+                library.loadAlbums()
+            } else if UIScreenHarness.isScreenshotRun {
+                // Screenshot runs must never raise the system Photos prompt.
+                source = .library
+            } else {
+                await library.requestAccess()
+            }
             album = library.albums.first
             reload()
         }

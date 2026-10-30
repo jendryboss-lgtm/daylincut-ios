@@ -114,18 +114,23 @@ jobs:
           xcrun simctl privacy "$UDID" grant camera "$BID" || true
           xcrun simctl privacy "$UDID" grant microphone "$BID" || true
           xcrun simctl privacy "$UDID" grant photos "$BID" || true
+          # Reboot so tccd/photos pick up the grants before the first launch.
+          xcrun simctl shutdown "$UDID" || true
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b || true
+          xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 || true
           shoot() {
             local screen="$1" wait="$2"
             xcrun simctl launch --terminate-running-process "$UDID" "$BID" -uiTesting -uiScreen "$screen"
             sleep "$wait"
             xcrun simctl io "$UDID" screenshot "artifacts/screens/daylincut-$screen.png"
           }
-          shoot home 15
-          shoot picker 30
+          shoot home 20
           shoot review 18
           shoot editor 18
           shoot exportOptions 18
           shoot export 18
+          shoot picker 30
           xcrun simctl terminate "$UDID" "$BID" || true
           ls -la artifacts/screens
 
